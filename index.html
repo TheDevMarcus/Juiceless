@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Juiceless v1 – guess the Juice WRLD song</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0e0b16;--panel:#1a1526;--line:#2e2745;--bone:#f3efe6;--mute:#9a93b3;--red:#e5383b;--vio:#8a6bff;--ok:#3ddc97}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--ink);color:var(--bone);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+body{min-height:100vh;background:radial-gradient(900px 500px at 50% -10%,#2a1d4d 0,transparent 70%),var(--ink)}
+main{max-width:520px;margin:0 auto;padding:34px 16px 48px}
+.ver{position:absolute;top:10px;left:12px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--mute);font-size:.72rem;font-weight:700;letter-spacing:.02em}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+h1{font:2rem/1 "Archivo Black",Impact,"Arial Black",sans-serif;margin:0;letter-spacing:-.01em}
+h1 small{display:block;font:500 .8rem system-ui,sans-serif;color:var(--mute);margin-top:6px;letter-spacing:0}
+.tabs{display:flex;gap:6px;margin:22px 0 18px}
+button{font:inherit;color:inherit;cursor:pointer}
+.tab{flex:1;padding:10px;border:1px solid var(--line);background:transparent;border-radius:10px;font-weight:600;color:var(--mute)}
+.tab:disabled{opacity:.45;cursor:not-allowed}
+.tab[aria-selected=true]{background:var(--bone);color:var(--ink);border-color:var(--bone)}
+.icon{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:8px 12px}
+button:focus-visible,input:focus-visible{outline:2px solid var(--vio);outline-offset:2px}
+.bar{position:relative;height:14px;background:var(--panel);border-radius:7px;overflow:hidden;border:1px solid var(--line)}
+.bar .unlocked{position:absolute;inset:0 auto 0 0;background:#2f2552}
+.bar .fill{position:absolute;inset:0 auto 0 0;background:var(--red);width:0}
+.bar i{position:absolute;top:0;bottom:0;width:2px;background:var(--ink)}
+.times{display:flex;justify-content:space-between;color:var(--mute);font-size:.78rem;margin:6px 2px 0}
+.player{display:flex;align-items:center;justify-content:center;gap:16px;margin:22px 0}
+.restart,.fwd{border:1px solid var(--line);background:var(--panel);color:var(--mute);border-radius:999px;padding:7px 16px;font-size:.84rem;font-weight:600}
+.restart:hover:not(:disabled),.fwd:hover:not(:disabled){color:var(--bone);border-color:var(--mute)}
+.restart:disabled,.fwd:disabled{opacity:.4;cursor:not-allowed}
+.loader{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:radial-gradient(600px 400px at 50% 45%,rgba(176,130,255,.55),transparent 70%),linear-gradient(160deg,#2a1368 0%,#5a2bd3 55%,#8b4dff 100%);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .6s ease,visibility 0s linear .6s}
+.loader.on{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .15s ease,visibility 0s}
+.mark{width:140px;height:140px;display:flex;align-items:center;justify-content:center;animation:juicePulse 1.1s ease-in-out infinite alternate}
+.mark img{max-width:100%;max-height:100%;object-fit:contain}
+.mark.nologo img{display:none}
+.mark.nologo::before{content:'';width:96px;height:96px;border-radius:50%;background:var(--bone)}
+@keyframes juicePulse{from{filter:grayscale(1);opacity:.35}to{filter:grayscale(0);opacity:1}}
+.play{width:84px;height:84px;border-radius:50%;border:0;background:var(--red);color:#fff;font-size:30px;box-shadow:0 0 0 8px rgba(229,56,59,.15)}
+.play:disabled{background:var(--line);box-shadow:none;cursor:wait}
+.guesses{display:grid;gap:6px;margin-bottom:16px}
+.g{height:40px;border:1px solid var(--line);border-radius:8px;padding:0 12px;display:flex;align-items:center;font-size:.92rem;color:var(--mute);background:rgba(26,21,38,.6);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.g.bad{color:var(--bone);border-color:#5a2b3f;background:rgba(229,56,59,.12)}
+.g.skip{font-style:italic}
+.g.win{color:var(--ink);background:var(--ok);border-color:var(--ok);font-weight:700}
+.search{position:relative}
+input[type=text]{width:100%;padding:13px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--bone);font:inherit}
+.sug{position:absolute;left:0;right:0;bottom:calc(100% + 4px);background:var(--panel);border:1px solid var(--line);border-radius:10px;max-height:260px;overflow:auto;z-index:5;display:none}
+.sug button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:0;padding:8px 14px;border-bottom:1px solid var(--line)}
+.sug img{width:44px;height:44px;border-radius:8px;object-fit:cover;background:var(--line);flex:none}
+.sug .t{min-width:0}
+.sug .t b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sug button:last-child{border:0}
+.sug button:hover,.sug button:focus{background:#261e3d}
+.sug span{display:block;font-size:.78rem;color:var(--mute)}
+.actions{display:flex;gap:8px;margin-top:10px}
+.actions button{flex:1;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);font-weight:600}
+.actions .go{background:var(--vio);border-color:var(--vio);color:#fff}
+.actions button:disabled{opacity:.4;cursor:not-allowed}
+.note{margin:-6px 0 14px;padding:10px 12px;border:1px solid #5a4a2b;background:rgba(255,190,70,.1);color:#f0d9a8;border-radius:10px;font-size:.84rem;line-height:1.4}
+.note[hidden]{display:none}
+.actions .quit{flex:.7;color:var(--mute)}
+.status{min-height:22px;text-align:center;color:var(--mute);font-size:.88rem;margin:6px 0 12px}
+.opts{display:flex;align-items:center;gap:8px;color:var(--mute);font-size:.84rem;margin-top:18px}
+dialog{background:var(--panel);color:var(--bone);border:1px solid var(--line);border-radius:14px;max-width:420px;width:calc(100% - 32px)}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);text-align:center;gap:14px 6px;margin:14px 0}
+.stats div:last-child{grid-column:1/-1}
+.stats b{display:block;font:1.6rem "Archivo Black",Impact,sans-serif}
+.stats span{font-size:.75rem;color:var(--mute)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--bone);color:var(--ink);padding:10px 16px;border-radius:10px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.on{opacity:1}
+footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--line);text-align:center;color:var(--mute);font-size:.85rem;line-height:1.6}
+footer p{margin:0}
+footer a{display:inline-flex;align-items:center;gap:8px;color:var(--bone);text-decoration:none;font-weight:600}
+footer a:hover{text-decoration:underline}
+footer img{height:22px;width:auto;max-width:48px}
+#winDlg{padding:0;width:calc(100% - 32px);max-width:540px;border-color:var(--ok)}
+#winDlg.lose{border-color:var(--red)}
+#winDlg::backdrop{background:rgba(5,3,10,.82);backdrop-filter:blur(3px)}
+#winDlg .in{padding:22px;position:relative}
+#winDlg .x{position:absolute;top:10px;right:12px;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--ink);color:var(--bone);font-size:22px;line-height:1;display:flex;align-items:center;justify-content:center}
+#winDlg .x:hover{background:var(--line)}
+#winDlg .head{padding-right:40px}
+#winDlg[open]{animation:dlgIn .22s ease-out}
+#winDlg.closing{animation:dlgOut .24s ease-in forwards}
+#winDlg.closing::backdrop{animation:fadeOut .24s ease-in forwards}
+@keyframes dlgIn{from{opacity:0;transform:scale(.94) translateY(8px)}to{opacity:1;transform:none}}
+@keyframes dlgOut{from{opacity:1;transform:none}to{opacity:0;transform:scale(.94) translateY(8px)}}
+@keyframes fadeOut{from{opacity:1}to{opacity:0}}
+#winDlg .head{margin:0 0 16px;font-weight:700;color:var(--ok)}
+#winDlg.lose .head{color:var(--red)}
+#winDlg .row{display:flex;gap:18px;align-items:center;text-align:left}
+#winDlg img{width:140px;height:140px;flex:none;border-radius:12px;object-fit:cover;background:var(--line);box-shadow:0 10px 30px rgba(0,0,0,.5)}
+#winDlg .txt{min-width:0}
+#winDlg h2{margin:0 0 6px;font:1.35rem/1.2 "Archivo Black",Impact,sans-serif;overflow-wrap:anywhere}
+#winDlg p{margin:2px 0;color:var(--mute);font-size:.9rem}
+#winDlg .btns{display:flex;gap:8px;margin-top:20px}
+#winDlg .new{flex:1.6;padding:14px;border:0;border-radius:10px;background:var(--red);color:#fff;font-weight:700;font-size:1rem}
+@media (max-width:400px){#winDlg img{width:96px;height:96px}#winDlg .row{gap:12px}}
+.sug .none{padding:12px 14px;color:var(--mute);font-size:.88rem}
+@media (prefers-reduced-motion:reduce){#winDlg[open],#winDlg.closing,#winDlg.closing::backdrop{animation:none!important}*{transition:none!important}.mark{animation:none;opacity:.85}}
+</style>
+</head>
+<body>
+<span class="ver">v1</span>
+<div class="loader on" id="loader" role="status" aria-label="Loading"><div class="mark"><img src="https://juicewrldapi.com/assets/hero.svg" alt="" onerror="this.parentNode.classList.add('nologo')"></div></div>
+<main>
+  <header>
+    <h1>Juiceless<small>Guess the Juice WRLD song from the intro.</small></h1>
+    <div><button class="icon" id="statsBtn" aria-label="Stats">Stats</button> <button class="icon" id="helpBtn" aria-label="How to play">Help</button></div>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tabReleased" aria-selected="true">Released</button>
+    <button class="tab" role="tab" id="tabUnreleased" aria-selected="false">Unreleased</button>
+  </div>
+
+  <p class="note" id="note" hidden>Heads up: the Unreleased section can include songs that have actually been released. We can't always tell them apart, and we can't fix it.</p>
+
+  <div class="bar" id="bar"><div class="unlocked" id="unlocked"></div><div class="fill" id="fill"></div></div>
+  <div class="times"><span>0s</span><span id="limitLabel">1s unlocked</span><span>16s</span></div>
+
+  <div class="player">
+    <button class="restart" id="restart" disabled title="Play from the very start">&#8634; Start</button>
+    <button class="play" id="play" aria-label="Play clip" disabled>&#9654;</button>
+    <button class="fwd" id="fwd" disabled title="Jump 1 second ahead">+1s &#8250;</button>
+  </div>
+
+  <div class="guesses" id="guesses"></div>
+  <div class="status" id="status" role="status">Loading a song…</div>
+
+  <div class="search">
+    <div class="sug" id="sug"></div>
+    <input type="text" id="q" placeholder="Search for the song title" autocomplete="off" disabled>
+  </div>
+  <div class="actions">
+    <button class="quit" id="giveup" disabled>Give up</button>
+    <button id="skip" disabled>Skip (+<span id="nextSec">1</span>s)</button>
+    <button class="go" id="submit" disabled>Submit guess</button>
+  </div>
+
+  <footer>
+    <p>Made by Marcus</p>
+    <p><a href="https://juicewrldapi.com" target="_blank" rel="noopener"><img src="https://juicewrldapi.com/assets/hero.svg" alt="" onerror="this.style.display='none'">Made with Juice WRLD API</a></p>
+  </footer>
+</main>
+
+<dialog id="winDlg"><div class="in">
+  <button class="x" id="closeX" aria-label="Close">&times;</button>
+  <p class="head" id="wTries"></p>
+  <div class="row">
+    <img id="wCover" alt="">
+    <div class="txt"><h2 id="wTitle"></h2><p id="wArtist"></p><p id="wMeta"></p></div>
+  </div>
+  <div class="btns"><button class="new" id="newSong">New song</button></div>
+</div></dialog>
+<dialog id="statsDlg"><h2 style="margin:0">Your stats</h2>
+  <div class="stats"><div><b id="sPlayed">0</b><span>Played</span></div><div><b id="sWin">0%</b><span>Win rate</span></div><div><b id="sStreak">0</b><span>Streak</span></div><div><b id="sBest">0</b><span>Best streak</span></div><div><b id="sSkip">0</b><span>Skips</span></div><div><b id="sWrong">0</b><span>Wrong guesses</span></div><div><b id="sFirst">0</b><span>First guess</span></div></div>
+  <form method="dialog"><button class="icon" style="width:100%">Close</button></form></dialog>
+<dialog id="helpDlg"><h2 style="margin:0 0 8px">How to play</h2>
+  <p style="color:var(--mute);line-height:1.5;margin-top:0">Press play to hear a tiny slice of a Juice WRLD song. Search for the title and submit a guess, or skip to unlock more of the clip. You get seven tries, with clips of 0.1s, 1s, 2s, 4s, 7s, 11s and 16s. Use the Released and Unreleased tabs to choose which songs you get.</p>
+  <form method="dialog"><button class="icon" style="width:100%">Got it</button></form></dialog>
+<div class="toast" id="toast"></div>
+
+<script>
+const API = 'https://juicewrldapi.com/juicewrld';
+const STEPS = [0.1, 1, 2, 4, 7, 11, 16];
+const MIN_LOAD_MS = 2000;
+const fmt = n => String(+n.toFixed(1));
+const $ = id => document.getElementById(id);
+const audio = new Audio(); audio.preload = 'auto';
+
+let mode = 'released', started = false, resumePos = null, song = null, guesses = [], done = false, won = false, picked = null, ticker = null, loadToken = 0;
+
+const norm = s => (s || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+const audioUrl = p => `${API}/files/download/?path=${encodeURIComponent(p)}`;
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+function hash(str) { let h = 2166136261; for (const c of str) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }
+function store(key, val) { try { if (val === undefined) { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } localStorage.setItem(key, JSON.stringify(val)); } catch (e) { return null; } }
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 1800); }
+function showLoader(on) { $('loader').classList.toggle('on', on); }
+function setStatus(m) { $('status').textContent = m; }
+
+function coverSrcs(s) { const a = []; if (s.path) a.push(`${API}/files/cover-art/?path=${encodeURIComponent(s.path)}`); if (s.image_url) a.push(new URL(s.image_url, API).href); return a; }
+function setCover(img, s) { const a = coverSrcs(s); const next = () => { if (a.length) { img.style.visibility = 'visible'; img.src = a.shift(); } else img.style.visibility = 'hidden'; }; img.onerror = next; next(); }
+async function detail(id) { return getJSON(`${API}/songs/${id}/`); }
+
+async function loadSong(cat) {
+  const total = (await getJSON(`${API}/songs/?category=${cat}&page_size=1`)).count;
+  if (!total) throw new Error('No songs in this section');
+  for (let i = 0; i < 25; i++) {
+    const page = Math.floor(Math.random() * total) + 1;
+    const row = (await getJSON(`${API}/songs/?category=${cat}&page_size=1&page=${page}`)).results[0];
+    if (!row) continue;
+    const full = await detail(row.id);
+    if (full.path) return full;
+  }
+  throw new Error('No playable song found');
+}
+
+function resetUI() {
+  clearInterval(ticker); audio.pause(); picked = null;
+  $('guesses').innerHTML = '';
+  $('q').value = ''; $('sug').style.display = 'none';
+  for (let i = 0; i < STEPS.length; i++) { const d = document.createElement('div'); d.className = 'g'; d.textContent = ''; $('guesses').appendChild(d); }
+  buildBar(); render();
+}
+function buildBar() {
+  [...$('bar').querySelectorAll('i')].forEach(n => n.remove());
+  STEPS.slice(0, -1).forEach(s => { const m = document.createElement('i'); m.style.left = (s / 16 * 100) + '%'; $('bar').appendChild(m); });
+}
+function limit() { return done ? 16 : STEPS[Math.min(guesses.length, STEPS.length - 1)]; }
+function render() {
+  const rows = $('guesses').children;
+  guesses.forEach((g, i) => { rows[i].textContent = g.skip ? 'Skipped' : g.giveup ? 'Gave up' : g.text; rows[i].className = 'g ' + (g.skip ? 'skip' : g.correct ? 'win' : 'bad'); });
+  const L = limit();
+  $('unlocked').style.width = (L / 16 * 100) + '%';
+  $('limitLabel').textContent = `${fmt(L)}s unlocked`;
+  const next = STEPS[Math.min(guesses.length + 1, STEPS.length - 1)];
+  $('nextSec').textContent = next - L > 0 ? fmt(next - L) : 0;
+  const live = !!song && !done;
+  $('q').disabled = !live; $('skip').disabled = !live; $('giveup').disabled = !live; $('submit').disabled = !live || !picked;
+  $('play').disabled = !song; $('restart').disabled = !song; $('fwd').disabled = !song;
+  const lock = started && !done && !!song;
+  [$('tabReleased'), $('tabUnreleased')].forEach(t => { t.disabled = lock; t.title = lock ? 'Finish or give up on this song to switch sections' : ''; });
+}
+
+async function startRound(newMode) {
+  mode = newMode ?? mode;
+  const token = ++loadToken;
+  const t0 = Date.now();
+  const hold = () => new Promise(r => setTimeout(r, Math.max(0, MIN_LOAD_MS - (Date.now() - t0))));
+  $('tabReleased').setAttribute('aria-selected', mode === 'released');
+  $('tabUnreleased').setAttribute('aria-selected', mode === 'unreleased');
+  $('note').hidden = mode !== 'unreleased';
+  song = null; guesses = []; done = false; won = false; started = false; resumePos = null;
+  resetUI(); setStatus('Loading a song…'); showLoader(true);
+  try {
+    const s = await loadSong(mode);
+    if (token !== loadToken) return;
+    song = s; audio.src = audioUrl(s.path); audio.load();
+    render();
+    await hold();
+    if (token !== loadToken) return;
+    showLoader(false);
+    setStatus('Press play to hear the first 0.1 seconds.');
+  } catch (e) {
+    await hold();
+    if (token === loadToken) showLoader(false);
+    setStatus('Could not load a song. Check your connection and try again.');
+    console.error(e);
+  }
+}
+
+function segStart() { return done || guesses.length === 0 ? 0 : STEPS[Math.min(guesses.length, STEPS.length) - 1]; }
+function play(fromStart) {
+  if (!song) return;
+  if (!started) { started = true; render(); }
+  clearInterval(ticker);
+  const L = limit();
+  let pos = segStart();
+  if (fromStart === true) pos = 0;
+  else if (resumePos !== null && resumePos < L - 0.02) pos = resumePos;
+  resumePos = null;
+  audio.currentTime = pos;
+  audio.play().then(() => {
+    ticker = setInterval(() => {
+      $('fill').style.width = Math.min(audio.currentTime / 16 * 100, 100) + '%';
+      if (audio.currentTime >= L) { audio.pause(); clearInterval(ticker); }
+    }, 10);
+  }).catch(() => setStatus('Audio could not play. Click play again or check the API status.'));
+}
+audio.addEventListener('pause', () => { $('play').innerHTML = '&#9654;'; });
+audio.addEventListener('play', () => { $('play').innerHTML = '&#10074;&#10074;'; });
+audio.addEventListener('error', () => setStatus('This clip failed to load. Try another song.'));
+$('restart').onclick = () => { audio.pause(); clearInterval(ticker); play(true); };
+$('play').onclick = () => { if (!audio.paused) { resumePos = audio.currentTime; audio.pause(); clearInterval(ticker); } else play(); };
+$('fwd').onclick = () => {
+  if (!song) return;
+  const L = limit();
+  if (!audio.paused) { audio.currentTime = Math.min(audio.currentTime + 1, L); return; }
+  const base = resumePos !== null ? resumePos : segStart();
+  const t = Math.min(base + 1, L);
+  resumePos = t; audio.currentTime = t;
+  $('fill').style.width = Math.min(t / 16 * 100, 100) + '%';
+};
+
+function baseTitle(t) { const b = norm((t || '').replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')); return b || norm(t); }
+function isCorrect(s) {
+  if (s.id === song.id) return true;
+  const titles = [song.name, ...(song.track_titles || [])].map(baseTitle).filter(Boolean);
+  return titles.includes(baseTitle(s.name));
+}
+const EMPTY_STATS = { played: 0, wins: 0, streak: 0, best: 0, skips: 0, wrong: 0, first: 0 };
+function bump(k) { const st = Object.assign({}, EMPTY_STATS, store('juiceless:stats')); st[k]++; store('juiceless:stats', st); }
+function addGuess(g) {
+  started = true; resumePos = null;
+  if (g.skip) { if (guesses.length > 0) bump('skips'); }
+  else if (!g.giveup && !g.correct) bump('wrong');
+  if (g.correct && guesses.length === 0) bump('first');
+  guesses.push(g);
+  if (g.correct) { done = true; won = true; }
+  else if (g.forceEnd || guesses.length >= STEPS.length) { done = true; won = false; }
+  picked = null; $('q').value = '';
+  render();
+  if (done) finish(false); else { setStatus(g.skip ? 'Skipped. A longer clip is unlocked.' : 'Wrong. A longer clip is unlocked.'); play(); }
+}
+$('submit').onclick = () => { if (picked) addGuess({ text: picked.name, correct: isCorrect(picked) }); };
+$('giveup').onclick = () => { if (!done && song) addGuess({ giveup: true, forceEnd: true }); };
+$('skip').onclick = () => { if (!done) addGuess({ skip: true }); };
+
+let timer;
+$('q').addEventListener('input', e => {
+  picked = null; render();
+  clearTimeout(timer);
+  const v = e.target.value.trim();
+  if (v.length < 2) { $('sug').style.display = 'none'; return; }
+  timer = setTimeout(async () => {
+    try {
+      const data = await getJSON(`${API}/songs/?search=${encodeURIComponent(v)}&category=${mode}&page_size=8`);
+      const seen = new Set(), rows = [];
+      data.results.forEach(s => { const k = norm(s.name); if (!seen.has(k)) { seen.add(k); rows.push(s); } });
+      const items = await Promise.all(rows.map(s => (s.path || s.image_url) ? s : detail(s.id).catch(() => s)));
+      if ($('q').value.trim() !== v) return;
+      const box = $('sug'); box.innerHTML = '';
+      items.forEach(s => {
+        const b = document.createElement('button'); b.type = 'button';
+        const img = document.createElement('img'); img.alt = ''; img.loading = 'lazy'; setCover(img, s);
+        const t = document.createElement('div'); t.className = 't';
+        const nm = document.createElement('b'); nm.textContent = s.name;
+        const sub = document.createElement('span'); sub.textContent = [s.credited_artists, s.era && s.era.name].filter(Boolean).join(' • ');
+        t.append(nm, sub); b.append(img, t);
+        b.onclick = () => { picked = s; $('q').value = s.name; box.style.display = 'none'; render(); };
+        box.appendChild(b);
+      });
+      if (!items.length) { const n = document.createElement('div'); n.className = 'none'; n.textContent = `No songs found for "${v}"`; box.appendChild(n); }
+      box.style.display = 'block';
+    } catch (err) {
+      const box = $('sug'); box.innerHTML = '<div class="none">Search failed. Check your connection and try again.</div>'; box.style.display = 'block';
+    }
+  }, 250);
+});
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter' && picked) $('submit').click(); });
+document.addEventListener('click', e => { if (!e.target.closest('.search')) $('sug').style.display = 'none'; });
+
+function finish(restored) {
+  render();
+  const gaveUp = guesses.length && guesses[guesses.length - 1].giveup;
+  $('winDlg').classList.toggle('lose', !won);
+  $('wTries').textContent = won ? `You got it in ${guesses.length} ${guesses.length === 1 ? 'try' : 'tries'}!` : (gaveUp ? 'You gave up. The song was:' : 'Out of tries. The song was:');
+  $('wTitle').textContent = song.name;
+  $('wArtist').textContent = [song.credited_artists, song.producers && 'Prod. ' + song.producers].filter(Boolean).join(' • ');
+  $('wMeta').textContent = [song.era && song.era.name, song.release_date && song.release_date.replace(/\s+/g, ' ').trim()].filter(Boolean).join(' • ');
+  setCover($('wCover'), song);
+  if (!$('winDlg').open) $('winDlg').showModal();
+  setStatus(won ? `You got it in ${guesses.length} ${guesses.length === 1 ? 'try' : 'tries'}.` : (guesses.length && guesses[guesses.length - 1].giveup ? 'You gave up.' : 'Out of tries.'));
+  $('fill').style.width = '0';
+  if (!restored) { audio.currentTime = 0; recordStats(); }
+}
+function recordStats() {
+  const s = Object.assign({}, EMPTY_STATS, store('juiceless:stats'));
+  s.played++; if (won) { s.wins++; s.streak++; s.best = Math.max(s.best, s.streak); } else s.streak = 0;
+  store('juiceless:stats', s);
+}
+function closeResult() {
+  const d = $('winDlg');
+  if (!d.open || d.classList.contains('closing')) return;
+  d.classList.add('closing');
+  setTimeout(() => { d.close(); d.classList.remove('closing'); }, 240);
+}
+$('newSong').onclick = closeResult;
+$('closeX').onclick = closeResult;
+$('winDlg').addEventListener('cancel', e => { e.preventDefault(); closeResult(); });
+$('winDlg').addEventListener('close', () => startRound(mode));
+$('winDlg').addEventListener('click', e => { if (e.target === $('winDlg')) closeResult(); });
+
+$('tabReleased').onclick = () => startRound('released');
+$('tabUnreleased').onclick = () => startRound('unreleased');
+$('helpBtn').onclick = () => $('helpDlg').showModal();
+$('statsBtn').onclick = () => {
+  const s = Object.assign({}, EMPTY_STATS, store('juiceless:stats'));
+  $('sFirst').textContent = s.first; $('sSkip').textContent = s.skips; $('sWrong').textContent = s.wrong;
+  $('sPlayed').textContent = s.played; $('sWin').textContent = (s.played ? Math.round(s.wins / s.played * 100) : 0) + '%';
+  $('sStreak').textContent = s.streak; $('sBest').textContent = s.best;
+  $('statsDlg').showModal();
+};
+
+startRound('released');
+</script>
+</body>
+</html>
