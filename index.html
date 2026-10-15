@@ -106,7 +106,7 @@ footer img{height:22px;width:auto;max-width:48px}
 </head>
 <body>
 <span class="ver">v1</span>
-<div class="loader on" id="loader" role="status" aria-label="Loading"><div class="mark"><img src="https://juicewrldapi.com/assets/hero.svg" alt="" onerror="this.parentNode.classList.add('nologo')"></div></div>
+<div class="loader on" id="loader" role="status" aria-label="Loading"><div class="mark nologo"></div></div>
 <main>
   <header>
     <h1>Juiceless<small>Guess the Juice WRLD song from the intro.</small></h1>
@@ -144,7 +144,7 @@ footer img{height:22px;width:auto;max-width:48px}
 
   <footer>
     <p>Made by Marcus</p>
-    <p><a href="https://juicewrldapi.com" target="_blank" rel="noopener"><img src="https://juicewrldapi.com/assets/hero.svg" alt="" onerror="this.style.display='none'">Made with Juice WRLD API</a></p>
+    <p><a href="https://juicewrldvault.com" target="_blank" rel="noopener">Made with Juice WRLD Vault</a></p>
   </footer>
 </main>
 
@@ -166,38 +166,66 @@ footer img{height:22px;width:auto;max-width:48px}
 <div class="toast" id="toast"></div>
 
 <script>
-const API = 'https://juicewrldapi.com/juicewrld';
+// Juice WRLD Vault data: the vault's public songs table (CORS-enabled), its media host, and its download endpoint as a fallback.
+const SB = 'https://qfsysguoaxbwhjeqkwat.supabase.co/rest/v1/songs';
+const SB_KEY = 'sb_publishable_OiYQrcK3sy5BOC3Bw87g7Q_xlGhXibg';
+const MEDIA = 'https://media.juicewrldvault.com';
+const VAULT_API = 'https://juicewrldvault.com/api';
+const FIELDS = 'id,title,author,song_path,image_path,source_category,era,duration_seconds,alt1:source_metadata->alternativeTitles,alt2:source_metadata->alternateTitles,alt3:source_metadata->alternative_titles';
+const totals = {};
 const STEPS = [0.1, 1, 2, 4, 7, 11, 16];
 const MIN_LOAD_MS = 2000;
 const fmt = n => String(+n.toFixed(1));
 const $ = id => document.getElementById(id);
 const audio = new Audio(); audio.preload = 'auto';
 
-let mode = 'released', started = false, resumePos = null, song = null, guesses = [], done = false, won = false, picked = null, ticker = null, loadToken = 0;
+let mode = 'released', triedFallback = false, started = false, resumePos = null, song = null, guesses = [], done = false, won = false, picked = null, ticker = null, loadToken = 0;
 
 const norm = s => (s || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
-const audioUrl = p => `${API}/files/download/?path=${encodeURIComponent(p)}`;
+const encSeg = s => { try { return encodeURIComponent(decodeURIComponent(s)); } catch (e) { return encodeURIComponent(s); } };
+function mediaUrl(p) {
+  const raw = String(p || '').trim();
+  if (!raw) return '';
+  if (/^https?:/i.test(raw)) return raw;
+  const rel = raw.replace(/^[/]+/, '');
+  return MEDIA + '/' + (rel.toLowerCase().startsWith('songs/') ? rel : 'songs/' + rel).split('/').map(encSeg).join('/');
+}
+function coverUrl(p) {
+  const raw = String(p || '').trim();
+  if (!raw) return '';
+  if (/^https?:/i.test(raw)) return raw;
+  return MEDIA + '/images/' + raw.replace(/^[/]+/, '').split('/').map(encodeURIComponent).join('/');
+}
+function toSong(r) {
+  const alts = [r.alt1, r.alt2, r.alt3].flatMap(a => Array.isArray(a) ? a : a ? [a] : []).filter(t => typeof t === 'string');
+  return { id: r.id, name: r.title || 'Untitled', track_titles: alts, credited_artists: r.author || '', era: r.era ? { name: r.era } : null, audio: mediaUrl(r.song_path), fallback: `${VAULT_API}/download-song?id=${encodeURIComponent(r.id)}`, cover: coverUrl(r.image_path) };
+}
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 function hash(str) { let h = 2166136261; for (const c of str) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
-async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }
+async function sbFetch(params, count) {
+  const q = new URLSearchParams(Object.assign({ select: FIELDS }, params));
+  const headers = { apikey: SB_KEY };
+  if (count) headers.Prefer = 'count=exact';
+  const r = await fetch(`${SB}?${q}`, { headers });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return { rows: await r.json(), total: +((r.headers.get('content-range') || '').split('/')[1]) || 0 };
+}
 function store(key, val) { try { if (val === undefined) { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } localStorage.setItem(key, JSON.stringify(val)); } catch (e) { return null; } }
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 1800); }
 function showLoader(on) { $('loader').classList.toggle('on', on); }
 function setStatus(m) { $('status').textContent = m; }
 
-function coverSrcs(s) { const a = []; if (s.path) a.push(`${API}/files/cover-art/?path=${encodeURIComponent(s.path)}`); if (s.image_url) a.push(new URL(s.image_url, API).href); return a; }
+function coverSrcs(s) { return s.cover ? [s.cover] : []; }
 function setCover(img, s) { const a = coverSrcs(s); const next = () => { if (a.length) { img.style.visibility = 'visible'; img.src = a.shift(); } else img.style.visibility = 'hidden'; }; img.onerror = next; next(); }
-async function detail(id) { return getJSON(`${API}/songs/${id}/`); }
 
 async function loadSong(cat) {
-  const total = (await getJSON(`${API}/songs/?category=${cat}&page_size=1`)).count;
+  const base = { source_category: 'eq.' + cat, song_path: 'not.is.null', order: 'id', limit: 1 };
+  if (!totals[cat]) totals[cat] = (await sbFetch(base, true)).total;
+  const total = totals[cat];
   if (!total) throw new Error('No songs in this section');
-  for (let i = 0; i < 25; i++) {
-    const page = Math.floor(Math.random() * total) + 1;
-    const row = (await getJSON(`${API}/songs/?category=${cat}&page_size=1&page=${page}`)).results[0];
-    if (!row) continue;
-    const full = await detail(row.id);
-    if (full.path) return full;
+  for (let i = 0; i < 5; i++) {
+    const { rows } = await sbFetch(Object.assign({}, base, { offset: Math.floor(Math.random() * total) }));
+    if (rows[0] && rows[0].song_path) return toSong(rows[0]);
   }
   throw new Error('No playable song found');
 }
@@ -242,7 +270,7 @@ async function startRound(newMode) {
   try {
     const s = await loadSong(mode);
     if (token !== loadToken) return;
-    song = s; audio.src = audioUrl(s.path); audio.load();
+    song = s; triedFallback = false; audio.src = s.audio; audio.load();
     render();
     await hold();
     if (token !== loadToken) return;
@@ -272,11 +300,14 @@ function play(fromStart) {
       $('fill').style.width = Math.min(audio.currentTime / 16 * 100, 100) + '%';
       if (audio.currentTime >= L) { audio.pause(); clearInterval(ticker); }
     }, 10);
-  }).catch(() => setStatus('Audio could not play. Click play again or check the API status.'));
+  }).catch(() => setStatus('Audio could not play. Click play again or check your connection.'));
 }
 audio.addEventListener('pause', () => { $('play').innerHTML = '&#9654;'; });
 audio.addEventListener('play', () => { $('play').innerHTML = '&#10074;&#10074;'; });
-audio.addEventListener('error', () => setStatus('This clip failed to load. Try another song.'));
+audio.addEventListener('error', () => {
+  if (song && song.fallback && !triedFallback) { triedFallback = true; audio.src = song.fallback; audio.load(); return; }
+  setStatus('This clip failed to load. Try another song.');
+});
 $('restart').onclick = () => { audio.pause(); clearInterval(ticker); play(true); };
 $('play').onclick = () => { if (!audio.paused) { resumePos = audio.currentTime; audio.pause(); clearInterval(ticker); } else play(); };
 $('fwd').onclick = () => {
@@ -321,10 +352,13 @@ $('q').addEventListener('input', e => {
   if (v.length < 2) { $('sug').style.display = 'none'; return; }
   timer = setTimeout(async () => {
     try {
-      const data = await getJSON(`${API}/songs/?search=${encodeURIComponent(v)}&category=${mode}&page_size=8`);
+      const clean = v.replace(/[*%,()]/g, ' ').split(String.fromCharCode(92)).join(' ').trim();
+      const found = clean ? (await sbFetch({ source_category: 'eq.' + mode, title: 'ilike.*' + clean + '*', order: 'id', limit: 40 })).rows : [];
+      const nq = norm(clean);
+      const rank = s => { const n = norm(s.name); return (n.startsWith(nq) ? 0 : 1000) + n.length; };
       const seen = new Set(), rows = [];
-      data.results.forEach(s => { const k = norm(s.name); if (!seen.has(k)) { seen.add(k); rows.push(s); } });
-      const items = await Promise.all(rows.map(s => (s.path || s.image_url) ? s : detail(s.id).catch(() => s)));
+      found.map(toSong).sort((a, b) => rank(a) - rank(b)).forEach(s => { const k = norm(s.name); if (!seen.has(k)) { seen.add(k); rows.push(s); } });
+      const items = rows.slice(0, 8);
       if ($('q').value.trim() !== v) return;
       const box = $('sug'); box.innerHTML = '';
       items.forEach(s => {
