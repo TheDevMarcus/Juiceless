@@ -166,13 +166,9 @@ footer img{height:22px;width:auto;max-width:48px}
 <div class="toast" id="toast"></div>
 
 <script>
-// Juice WRLD Vault data: the vault's public songs table (CORS-enabled), its media host, and its download endpoint as a fallback.
-const SB = 'https://qfsysguoaxbwhjeqkwat.supabase.co/rest/v1/songs';
-const SB_KEY = 'sb_publishable_OiYQrcK3sy5BOC3Bw87g7Q_xlGhXibg';
-const MEDIA = 'https://media.juicewrldvault.com';
-const VAULT_API = 'https://juicewrldvault.com/api';
-const FIELDS = 'id,title,author,song_path,image_path,source_category,era,duration_seconds,alt1:source_metadata->alternativeTitles,alt2:source_metadata->alternateTitles,alt3:source_metadata->alternative_titles';
-const totals = {};
+// Juice WRLD Vault data comes through the Uaid proxy (same one the Uaid app uses): catalog, search, audio and covers.
+const PROXY = 'https://apitest-1-7nna.onrender.com';
+const API = PROXY + '/api';
 const STEPS = [0.1, 1, 2, 4, 7, 11, 16];
 const MIN_LOAD_MS = 2000;
 const fmt = n => String(+n.toFixed(1));
@@ -186,30 +182,58 @@ const encSeg = s => { try { return encodeURIComponent(decodeURIComponent(s)); } 
 function mediaUrl(p) {
   const raw = String(p || '').trim();
   if (!raw) return '';
-  if (/^https?:/i.test(raw)) return raw;
+  if (/^https?:/i.test(raw)) return raw.replace(/^https?:\/\/media\.juicewrldvault\.com\//i, PROXY + '/media/');
   const rel = raw.replace(/^[/]+/, '');
-  return MEDIA + '/' + (rel.toLowerCase().startsWith('songs/') ? rel : 'songs/' + rel).split('/').map(encSeg).join('/');
+  return PROXY + '/media/' + (rel.toLowerCase().startsWith('songs/') ? rel : 'songs/' + rel).split('/').map(encSeg).join('/');
 }
 function coverUrl(p) {
   const raw = String(p || '').trim();
   if (!raw) return '';
-  if (/^https?:/i.test(raw)) return raw;
-  return MEDIA + '/images/' + raw.replace(/^[/]+/, '').split('/').map(encodeURIComponent).join('/');
+  if (/^https?:/i.test(raw)) return raw.replace(/^https?:\/\/media\.juicewrldvault\.com\//i, PROXY + '/media/');
+  return PROXY + '/media/images/' + raw.replace(/^[/]+/, '').split('/').map(encodeURIComponent).join('/');
+}
+function metaOf(r) {
+  let m = r.source_metadata;
+  if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = null; } }
+  return m && typeof m === 'object' ? m : {};
 }
 function toSong(r) {
-  const alts = [r.alt1, r.alt2, r.alt3].flatMap(a => Array.isArray(a) ? a : a ? [a] : []).filter(t => typeof t === 'string');
-  return { id: r.id, name: r.title || 'Untitled', track_titles: alts, credited_artists: r.author || '', era: r.era ? { name: r.era } : null, audio: mediaUrl(r.song_path), fallback: `${VAULT_API}/download-song?id=${encodeURIComponent(r.id)}`, cover: coverUrl(r.image_path) };
+  const m = metaOf(r);
+  const alts = ['alternativeTitles', 'alternateTitles', 'alternative_titles'].flatMap(k => Array.isArray(m[k]) ? m[k] : m[k] ? [m[k]] : []).filter(t => typeof t === 'string');
+  const era = r.era && typeof r.era === 'object' ? r.era : r.era ? { name: String(r.era) } : null;
+  return { id: r.id, name: r.title || 'Untitled', track_titles: alts, credited_artists: r.author || '', era, audio: r.audioUrl || mediaUrl(r.song_path), fallback: `${API}/download-song?id=${encodeURIComponent(r.id)}`, cover: r.coverUrl || coverUrl(r.image_path) };
 }
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 function hash(str) { let h = 2166136261; for (const c of str) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
-async function sbFetch(params, count) {
-  const q = new URLSearchParams(Object.assign({ select: FIELDS }, params));
-  const headers = { apikey: SB_KEY };
-  if (count) headers.Prefer = 'count=exact';
-  const r = await fetch(`${SB}?${q}`, { headers });
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  return { rows: await r.json(), total: +((r.headers.get('content-range') || '').split('/')[1]) || 0 };
+// The proxy lives on a free host that sleeps when idle, so ping /health and wait for it to wake before real requests.
+let warmPromise = null, warmAt = 0;
+function warmProxy() {
+  if (warmPromise && Date.now() - warmAt < 5 * 60 * 1000) return warmPromise;
+  warmAt = Date.now();
+  warmPromise = (async () => {
+    for (let i = 0; i < 15; i++) {
+      try { if ((await fetch(PROXY + '/health', { cache: 'no-store' })).ok) return true; } catch (e) {}
+      await new Promise(r => setTimeout(r, 2500));
+    }
+    warmAt = 0;
+    return false;
+  })();
+  return warmPromise;
 }
+async function api(path, init) {
+  await warmProxy();
+  for (let i = 0; ; i++) {
+    try {
+      const r = await fetch(API + path, init);
+      if (r.ok) return await r.json();
+      if (![429, 502, 503, 504].includes(r.status) || i >= 2) throw new Error('HTTP ' + r.status);
+    } catch (e) {
+      if (i >= 2) throw e;
+    }
+    await new Promise(r => setTimeout(r, 500 * 2 ** i));
+  }
+}
+
 function store(key, val) { try { if (val === undefined) { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } localStorage.setItem(key, JSON.stringify(val)); } catch (e) { return null; } }
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 1800); }
 function showLoader(on) { $('loader').classList.toggle('on', on); }
@@ -218,16 +242,28 @@ function setStatus(m) { $('status').textContent = m; }
 function coverSrcs(s) { return s.cover ? [s.cover] : []; }
 function setCover(img, s) { const a = coverSrcs(s); const next = () => { if (a.length) { img.style.visibility = 'visible'; img.src = a.shift(); } else img.style.visibility = 'hidden'; }; img.onerror = next; next(); }
 
-async function loadSong(cat) {
-  const base = { source_category: 'eq.' + cat, song_path: 'not.is.null', order: 'id', limit: 1 };
-  if (!totals[cat]) totals[cat] = (await sbFetch(base, true)).total;
-  const total = totals[cat];
-  if (!total) throw new Error('No songs in this section');
-  for (let i = 0; i < 5; i++) {
-    const { rows } = await sbFetch(Object.assign({}, base, { offset: Math.floor(Math.random() * total) }));
-    if (rows[0] && rows[0].song_path) return toSong(rows[0]);
+// The proxy has no "random song in a section" endpoint, so draw from search: pick a common term, jump to a random
+// page of its results, and keep every released/unreleased hit in a buffer for the next rounds.
+const TERMS = ['lo', 'the', 'ma', 'ri', 'di', 'ba', 'lu', 'wh', 'ca', 'st', 'an', 'me', 'to', 'be', 'li', 'sa', 'he', 'al', 'ha', 'ni', 'ra', 'jo', 'mo', 'pa', 'de', 'ro', 'la', 'co', 'ki', 'ju'];
+const ready = { released: [], unreleased: [] }, seen = new Set(), termTotals = {};
+const rand = n => Math.floor(Math.random() * n);
+async function refill() {
+  const term = TERMS[rand(TERMS.length)];
+  const search = (limit, offset) => api('/search/songs?' + new URLSearchParams({ q: term, limit, offset }));
+  if (termTotals[term] === undefined) termTotals[term] = +(await search(1, 0)).total || 0;
+  const total = termTotals[term];
+  if (!total) return;
+  const d = await search(100, rand(Math.max(1, total - 99)));
+  for (const r of d.songs || []) {
+    const c = String(r.source_category || '').toLowerCase();
+    if (r.song_path && ready[c] && !seen.has(r.id)) { seen.add(r.id); ready[c].push(r); }
   }
-  throw new Error('No playable song found');
+}
+async function loadSong(cat) {
+  for (let i = 0; i < 12 && !ready[cat].length; i++) await refill();
+  const r = ready[cat].splice(rand(ready[cat].length), 1)[0];
+  if (!r) throw new Error('No playable song found');
+  return toSong(r);
 }
 
 function resetUI() {
@@ -353,7 +389,7 @@ $('q').addEventListener('input', e => {
   timer = setTimeout(async () => {
     try {
       const clean = v.replace(/[*%,()]/g, ' ').split(String.fromCharCode(92)).join(' ').trim();
-      const found = clean ? (await sbFetch({ source_category: 'eq.' + mode, title: 'ilike.*' + clean + '*', order: 'id', limit: 40 })).rows : [];
+      const found = clean ? ((await api('/search/songs?' + new URLSearchParams({ q: clean, limit: 100 }))).songs || []).filter(r => String(r.source_category || '').toLowerCase() === mode).slice(0, 40) : [];
       const nq = norm(clean);
       const rank = s => { const n = norm(s.name); return (n.startsWith(nq) ? 0 : 1000) + n.length; };
       const seen = new Set(), rows = [];
@@ -423,6 +459,7 @@ $('statsBtn').onclick = () => {
   $('statsDlg').showModal();
 };
 
+warmProxy();
 startRound('released');
 </script>
 </body>
