@@ -32,7 +32,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--vio);outline-of
 .restart:hover:not(:disabled),.fwd:hover:not(:disabled){color:var(--bone);border-color:var(--mute)}
 .restart:disabled,.fwd:disabled{opacity:.4;cursor:not-allowed}
 .loader{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:radial-gradient(600px 400px at 50% 45%,rgba(176,130,255,.55),transparent 70%),linear-gradient(160deg,#2a1368 0%,#5a2bd3 55%,#8b4dff 100%);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .6s ease,visibility 0s linear .6s}
-.loader.on{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .15s ease,visibility 0s}
+.loader.on{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .08s ease,visibility 0s}
 .mark{width:140px;height:140px;display:flex;align-items:center;justify-content:center;animation:juicePulse 1.1s ease-in-out infinite alternate}
 .mark img{max-width:100%;max-height:100%;object-fit:contain}
 .mark.nologo img{display:none}
@@ -197,6 +197,11 @@ function metaOf(r) {
   if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = null; } }
   return m && typeof m === 'object' ? m : {};
 }
+function isStem(r) {
+  const m = metaOf(r);
+  const sub = String(m.subCategory || m.sub_category || m.subcategory || '');
+  return /stem/i.test(sub) || /stem/i.test(String(r.source_category || '')) || /^stems?\b/i.test(String(r.era || m.era || '')) || /[\[(][^\])]*\bstems?\b/i.test(String(r.title || ''));
+}
 function toSong(r) {
   const m = metaOf(r);
   const alts = ['alternativeTitles', 'alternateTitles', 'alternative_titles'].flatMap(k => Array.isArray(m[k]) ? m[k] : m[k] ? [m[k]] : []).filter(t => typeof t === 'string');
@@ -256,7 +261,7 @@ async function refill() {
   const d = await search(100, rand(Math.max(1, total - 99)));
   for (const r of d.songs || []) {
     const c = String(r.source_category || '').toLowerCase();
-    if (r.song_path && ready[c] && !seen.has(r.id)) { seen.add(r.id); ready[c].push(r); }
+    if (r.song_path && ready[c] && !seen.has(r.id) && !isStem(r)) { seen.add(r.id); ready[c].push(r); }
   }
 }
 async function loadSong(cat) {
@@ -389,7 +394,7 @@ $('q').addEventListener('input', e => {
   timer = setTimeout(async () => {
     try {
       const clean = v.replace(/[*%,()]/g, ' ').split(String.fromCharCode(92)).join(' ').trim();
-      const found = clean ? ((await api('/search/songs?' + new URLSearchParams({ q: clean, limit: 100 }))).songs || []).filter(r => String(r.source_category || '').toLowerCase() === mode).slice(0, 40) : [];
+      const found = clean ? ((await api('/search/songs?' + new URLSearchParams({ q: clean, limit: 100 }))).songs || []).filter(r => String(r.source_category || '').toLowerCase() === mode && !isStem(r)).slice(0, 40) : [];
       const nq = norm(clean);
       const rank = s => { const n = norm(s.name); return (n.startsWith(nq) ? 0 : 1000) + n.length; };
       const seen = new Set(), rows = [];
@@ -438,9 +443,10 @@ function recordStats() {
 }
 function closeResult() {
   const d = $('winDlg');
-  if (!d.open || d.classList.contains('closing')) return;
-  d.classList.add('closing');
-  setTimeout(() => { d.close(); d.classList.remove('closing'); }, 240);
+  if (!d.open) return;
+  // The dialog lives in the top layer, above the loader, so it has to go right away or the loader can't cover the screen.
+  showLoader(true);
+  d.close();
 }
 $('newSong').onclick = closeResult;
 $('closeX').onclick = closeResult;
